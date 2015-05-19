@@ -25,7 +25,7 @@ var errorhandler = require('errorhandler');
 
 app.use(stormpath.init(app, {
     apiKeyFile: './config/stormpath_apikey.properties',
-    application: 'https://api.stormpath.com/v1/applications/3gyNAWsliYCnAnMHcq63G2',
+    application: security.stormpath_app_name,
     secretKey: security.stormpath_secret_key
 }));
 
