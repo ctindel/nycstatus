@@ -1,0 +1,4 @@
+module.exports = {
+    url : 'http://localhost:8000/api/v1.0'
+    sp_app_name : 'NYCStatus Development';
+}
