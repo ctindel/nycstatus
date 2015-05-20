@@ -1,0 +1,12 @@
+{
+    "name": "nycstatus-loader",
+    "main": "loader.js",
+    "dependencies": {
+        "mongodb" : "^1.4.26",
+        "mongoose" : "^3.8.0",
+        "request" : "^2.55.0",
+        "xml2js" : "^0.4.8",
+        "moment" : "^2.10.3",
+        "async" : "~0.9.0"
+    }
+}
