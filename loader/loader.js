@@ -10,6 +10,7 @@ var uber = require('uber-api')({server_token : security.uberServerToken});
 var S = require('string');
 var cheerio = require('cheerio');
 var prevoty = require('prevoty').client({ key: security.prevotyApiKey });
+var models = require('../shared/models')(mongoose);
 
 mongoose.connect(db.url);
 mongoose.set('debug', true);
@@ -41,75 +42,7 @@ var MTA_POLLING_INTERVAL_MINS = 5;
 
 var WEATHER_API_BASE_URL = 'http://forecast.weather.gov/MapClick.php?';
 var UBER_API_BASE_URL = 'https://api.uber.com/v1/products';
-
-var weatherForecastSchema = new mongoose.Schema({
-    periodName : { type: String, trim: true},
-    temp : { type: Number },
-    iconLink : { type: String, trim: true},
-    shortDescription : { type: String, trim: true},
-    longDescription : { type: String, trim: true},
-    hazard : { type: String, trim: true},
-    hazardUrl : { type: String, trim: true}
-},
-{ _id : false }
-);
-
-var boroughWeatherStatusSchema = new mongoose.Schema({
-    borough : { type: String, trim: true},
-    current : {
-        temp : { type: String, trim: true},
-        winds : { type: String, trim: true},
-        description : { type: String, trim: true},
-        image : { type: String, trim: true}
-    },
-    forecast : [weatherForecastSchema], 
-},
-{ _id : false }
-);
-
-var uberProductSchema = new mongoose.Schema({
-    name : { type: String, trim: true},
-    surgeMultiplier : { type: Number }
-},
-{ _id : false }
-);
-
-var boroughUberStatusSchema = new mongoose.Schema({
-    borough : { type: String, trim: true},
-    products : [uberProductSchema]
-},
-{ _id : false }
-);
-
-var mtaServiceStatusSchema = new mongoose.Schema({
-    line : { type: String, trim: true},
-    status : { type: String, trim: true},
-    text : { type: String, trim: true},
-    date : { type: String, trim: true},
-    time : { type: String, trim: true},
-},
-{ _id : false }
-);
-
-var statusSchema = new mongoose.Schema({
-    _id : { type: Number },
-    weatherStatus : { 
-        lastUpdated : { type: Date, default: Date.now },
-        boroughs : [boroughWeatherStatusSchema]
-    },
-    uberStatus : {
-        lastUpdated : { type: Date, default: Date.now },
-        boroughs : [boroughUberStatusSchema]
-    },
-    mtaStatus : {
-        lastUpdated : { type: Date, default: Date.now },
-        service : [mtaServiceStatusSchema]
-    }
-},
-{ collection: 'status' }
-);
-
-var StatusModel = mongoose.model( 'Status', statusSchema );
+var MTA_API_BASE_URL = 'http://web.mta.info/status/serviceStatus.txt';
 
 var now = moment();
 var currentStatus = null;
@@ -136,7 +69,7 @@ function verifyPrevoty() {
 
 function getCurrentStatus() {
     return function(next) {
-        StatusModel.find({'_id' : 1}, function (err, results) {
+        models.StatusModel.find({'_id' : 1}, function (err, results) {
             if (err) {
                 errExit("Problem retrieving current status: " + err.toString());
             }
@@ -169,8 +102,9 @@ function retrieveWeatherStatus() {
                 }
 
                 if (response.statusCode != 200) {
-                    return next(new Error("%s return statusCode %d", 
-                                          url, response.statusCode));
+                    return next(new Error(url + 
+                                          ' returned statusCode ' + 
+                                          response.statusCode));
                 }
 
                 var res = JSON.parse(body);
@@ -227,7 +161,7 @@ function retrieveWeatherStatus() {
 
 function saveWeatherStatus() {
     return function(next) {
-        StatusModel.where({ '_id' : 1 }).update({'$set' : {'weatherStatus' : newWeatherStatus}}, function (err, numberAffected, raw) {
+        models.StatusModel.where({ '_id' : 1 }).update({'$set' : {'weatherStatus' : newWeatherStatus}}, function (err, numberAffected, raw) {
             if (err) {
                 next(err);
             }
@@ -307,7 +241,7 @@ function retrieveUberStatus() {
 
 function saveUberStatus() {
     return function(next) {
-        StatusModel.where({ '_id' : 1 }).update({'$set' : {'uberStatus' : newUberStatus}}, function (err, numberAffected, raw) {
+        models.StatusModel.where({ '_id' : 1 }).update({'$set' : {'uberStatus' : newUberStatus}}, function (err, numberAffected, raw) {
             if (err) {
                 next(err);
             }
@@ -364,47 +298,61 @@ function retrieveMTAStatus() {
     return function(next) {
         var prevotyTasks = [];
         var serviceArray = [];
-        var body = fs.readFileSync('serviceStatus.txt', {encoding : 'utf8'});
+        //var body = fs.readFileSync('serviceStatus.txt', {encoding : 'utf8'});
 
-        //console.log(body);
-        // Because there are things like &amp;nbsp; we need to clean those up
-        // before doing the HTML Decode, so we just do the same thing twice.
-        var decodedBody = S(body).decodeHTMLEntities().s;
-        decodedBody = S(decodedBody).decodeHTMLEntities().s;
-        
-        var $ = cheerio.load(decodedBody,
-                             { normalizeWhitespace: true,
-                               lowerCaseTags : false,
-                               lowerCaseAttributeNames : false,
-                               xmlMode: true,
-                               decodeEntities : false});
+        var options = { 'url' : MTA_API_BASE_URL, 
+                        headers : {'User-Agent' : 'Mozilla/5.0'}};
 
-        $('line').each(function(i, elem) {
-            var line = $(this);
-            var dirtyText = line.children('text').text();
-            var mtaStatus = {
-                line : line.children('name').text(),
-                status : line.children('status').text(),
-                date : line.children('date').text(),
-                time : line.children('time').text(),
-            };
-            prevotyTasks.push(sanitizeText(serviceArray, mtaStatus, dirtyText));
-        });
-
-        async.series(prevotyTasks, function(err, results){
+        request(options, function (err, response, body) {
             if (err) {
                 return next(err);
             }
-            newMTAStatus.lastUpdated = now;
-            newMTAStatus.service = serviceArray;
-            return next();
+
+            if (response.statusCode != 200) {
+                return next(new Error(MTA_API_BASE_URL + 
+                                      ' returned statusCode ' + 
+                                      response.statusCode));
+            }
+
+            // Because there are things like &amp;nbsp; we need to clean those up
+            // before doing the HTML Decode, so we just do the same thing twice.
+            var decodedBody = S(body).decodeHTMLEntities().s;
+            decodedBody = S(decodedBody).decodeHTMLEntities().s;
+            
+            var $ = cheerio.load(decodedBody,
+                                 { normalizeWhitespace: true,
+                                   lowerCaseTags : false,
+                                   lowerCaseAttributeNames : false,
+                                   xmlMode: true,
+                                   decodeEntities : false});
+
+            $('line').each(function(i, elem) {
+                var line = $(this);
+                var dirtyText = line.children('text').text();
+                var mtaStatus = {
+                    line : line.children('name').text(),
+                    status : line.children('status').text(),
+                    date : line.children('date').text(),
+                    time : line.children('time').text(),
+                };
+                prevotyTasks.push(sanitizeText(serviceArray, mtaStatus, dirtyText));
+            });
+
+            async.series(prevotyTasks, function(err, results) {
+                if (err) {
+                    return next(err);
+                }
+                newMTAStatus.lastUpdated = now;
+                newMTAStatus.service = serviceArray;
+                return next();
+            });
         });
     }
 }
 
 function saveMTAStatus() {
     return function(next) {
-        StatusModel.where({ '_id' : 1 }).update({'$set' : {'mtaStatus' : newMTAStatus}}, function (err, numberAffected, raw) {
+        models.StatusModel.where({ '_id' : 1 }).update({'$set' : {'mtaStatus' : newMTAStatus}}, function (err, numberAffected, raw) {
             if (err) {
                 next(err);
             }
@@ -441,8 +389,8 @@ var loaderArray = [];
 
 loaderArray.push(verifyPrevoty());
 loaderArray.push(getCurrentStatus());
-//loaderArray.push(loadWeatherStatus());
-//loaderArray.push(loadUberStatus());
+loaderArray.push(loadWeatherStatus());
+loaderArray.push(loadUberStatus());
 loaderArray.push(loadMTAStatus());
 
 async.series(loaderArray, function(err, results){

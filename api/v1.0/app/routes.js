@@ -3,10 +3,13 @@ var logger = require('../logger');
 var security = require('../config/security');
 var validator = require('validator');
 var async = require('async');
+var Models = require('../../../shared/models');
 
 exports.addAPIRouter = function(app, mongoose, stormpath) {
 
     var router = express.Router();
+
+    var models = Models(mongoose);
 
     var userSchema = new mongoose.Schema({
         active: Boolean,
@@ -160,5 +163,45 @@ exports.addAPIRouter = function(app, mongoose, stormpath) {
         });
     });
 
+    router.get('/status', function(req, res) {
+        logger.debug('Router for GET /status');
+
+        var user = null;
+        var errStr = null;
+        var includeUnreadIDs = false;
+        var resultStatus = null;
+        var resultJSON = {};
+
+        var getStatusTasks = [
+            function getStatus(cb) {
+                models.StatusModel.find({'_id' : 1}, function (err, statusDocs) {
+                    if (err) {
+                        errStr = 'Error retrieving current status';
+                        resultStatus = 400;
+                        resultJSON = { error : errStr };
+                        logger.debug(errStr);
+                        cb(new Error(errStr));
+                    }
+
+                    if (statusDocs.length == 0) {
+                        logger.debug('Empty status docs ');
+                        cb(new Error("Not really an error but we want to shortcircuit the series"));
+                    } else {
+                        resultJSON = { currentStatus : statusDocs[0] };
+                        cb(null);
+                    }
+                });
+            }
+        ]
+
+        async.series(getStatusTasks, function finalizer(err, results) {
+            if (null == resultStatus) {
+                res.status(200);
+            } else {
+                res.status(resultStatus);
+            }
+            res.json(resultJSON);
+        });
+    });
     app.use('/api/v1.0', router);
 }
