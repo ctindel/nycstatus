@@ -174,7 +174,9 @@ exports.addAPIRouter = function(app, mongoose, stormpath) {
 
         var getStatusTasks = [
             function getStatus(cb) {
-                models.StatusModel.find({'_id' : 1}, function (err, statusDocs) {
+                // This looks weird but we want to both search on _id and
+                // exclude it from the results
+                models.StatusModel.find({'_id' : 1}, {'_id' : 0}, function (err, statusDocs) {
                     if (err) {
                         errStr = 'Error retrieving current status';
                         resultStatus = 400;
