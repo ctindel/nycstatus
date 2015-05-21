@@ -1,10 +1,18 @@
+"use strict";
 var request = require('request');
 var moment = require('moment');
 var mongoose = require('mongoose');
 var fs = require('fs');
+var async = require('async');
+var db = require('./config/db');
+var security = require('./config/security');
+var uber = require('uber-api')({server_token : security.uberServerToken});
+var S = require('string');
+var cheerio = require('cheerio');
+var prevoty = require('prevoty').client({ key: security.prevotyApiKey });
 
-var BASE_URL = 'http://forecast.weather.gov/MapClick.php?';
-mongoose.connect('mongodb://localhost/nycstatus_test');
+mongoose.connect(db.url);
+mongoose.set('debug', true);
 
 var BOROUGHS = [ { 'name' : 'Manhattan', 
                    'zip' : '10003', 
@@ -27,6 +35,13 @@ var BOROUGHS = [ { 'name' : 'Manhattan',
                    'latitude' : '40.5866',
                    'longitude' : '-74.1489' }];
 
+var WEATHER_POLLING_INTERVAL_MINS = 60;
+var UBER_POLLING_INTERVAL_MINS = 3;
+var MTA_POLLING_INTERVAL_MINS = 5;
+
+var WEATHER_API_BASE_URL = 'http://forecast.weather.gov/MapClick.php?';
+var UBER_API_BASE_URL = 'https://api.uber.com/v1/products';
+
 var weatherForecastSchema = new mongoose.Schema({
     periodName : { type: String, trim: true},
     temp : { type: Number },
@@ -36,10 +51,10 @@ var weatherForecastSchema = new mongoose.Schema({
     hazard : { type: String, trim: true},
     hazardUrl : { type: String, trim: true}
 },
-{ _id : true }
+{ _id : false }
 );
 
-var weatherStatusSchema = new mongoose.Schema({
+var boroughWeatherStatusSchema = new mongoose.Schema({
     borough : { type: String, trim: true},
     current : {
         temp : { type: String, trim: true},
@@ -48,103 +63,392 @@ var weatherStatusSchema = new mongoose.Schema({
         image : { type: String, trim: true}
     },
     forecast : [weatherForecastSchema], 
-    lastUpdated : { type: Date, default: Date.now }
 },
-{ _id : true }
+{ _id : false }
+);
+
+var uberProductSchema = new mongoose.Schema({
+    name : { type: String, trim: true},
+    surgeMultiplier : { type: Number }
+},
+{ _id : false }
+);
+
+var boroughUberStatusSchema = new mongoose.Schema({
+    borough : { type: String, trim: true},
+    products : [uberProductSchema]
+},
+{ _id : false }
+);
+
+var mtaServiceStatusSchema = new mongoose.Schema({
+    line : { type: String, trim: true},
+    status : { type: String, trim: true},
+    text : { type: String, trim: true},
+    date : { type: String, trim: true},
+    time : { type: String, trim: true},
+},
+{ _id : false }
 );
 
 var statusSchema = new mongoose.Schema({
     _id : { type: Number },
-    weatherStatus : [weatherStatusSchema]
+    weatherStatus : { 
+        lastUpdated : { type: Date, default: Date.now },
+        boroughs : [boroughWeatherStatusSchema]
+    },
+    uberStatus : {
+        lastUpdated : { type: Date, default: Date.now },
+        boroughs : [boroughUberStatusSchema]
+    },
+    mtaStatus : {
+        lastUpdated : { type: Date, default: Date.now },
+        service : [mtaServiceStatusSchema]
+    }
 },
 { collection: 'status' }
 );
 
 var StatusModel = mongoose.model( 'Status', statusSchema );
 
-var now = new Date();
-var newStatus = {_id : 1, weatherStatus : []};
+var now = moment();
+var currentStatus = null;
 
-BOROUGHS.forEach(function getWeather(borough, index, array) {
-    var url = BASE_URL + 
-              'lat='+borough.latitude + 
-              '&lon='+borough.longitude +
-              '&FcstType=json';
-    // We have to fill out the User-Agent or we get denied
-    var options = {'url' : url, headers : {'User-Agent' : 'Mozilla/5.0'}};
+var newWeatherStatus = {lastUpdated : new Date(), boroughs : []};
+var newUberStatus = {lastUpdated : new Date(), boroughs : []};
+var newMTAStatus = {lastUpdated : new Date(), service : []};
 
-    //request(options, function (err, response, body) {
-    if (true) {
-//        if (err) {
-//            throw new Error("Error with weather.gov lookup: " + err.toString());
-//        }
+function errExit(str) {
+    console.log("ERROR: " + str);
+    process.exit(code=1);
+}
 
-        console.log('Borough=%s url=%s', borough.name, url);
-        //if (response.statusCode == 200) {
-        if (true) {
-            var body = fs.readFileSync(borough.name + '.json', {encoding : 'utf8'});
-            var res = JSON.parse(body);
-            weather = {
-                'borough' : borough.name,
-                'current' : { 
-                    'temp' : res.currentobservation.Temp,
-                    'winds' : res.currentobservation.Winds,
-                    'description' : res.currentobservation.Weather,
-                    'image' : res.currentobservation.Weatherimage},
-                'forecast' : [],
-                'lastUpdated' : new Date()
-            };
-            console.log('res.time.startValidTime[0]: %s', res.time.startValidTime[0]);
-            var firstDate = moment(res.time.startValidTime[0]);            
-            var stopDate = firstDate.add(1, 'days');
-
-            console.log("firstDate: %s", firstDate.toString());
-            console.log("stopDate: %s", stopDate.toString());
-
-            var date;
-            var ndx = 0;
-
-            // There can be at most 8 6-hour increments for today and tomorrow
-            // So we'll make sure we don't go past the 9th element
-            for (ndx = 0; ndx < 9; ndx++) {
-                date = moment(res.time.startValidTime[ndx]);
-                console.log("date: %s", date.toString());
-                if (date.isAfter(stopDate)) {
-                    break;
-                }
-                forecast = {
-                    'periodName' : res.time.startPeriodName[ndx],
-                    'tempLabel' : res.time.tempLabel[ndx],
-                    'temp' : res.data.temperature[ndx],
-                    'iconLink' : res.data.iconLink[ndx],
-                    'shortDescription' : res.data.weather[ndx],
-                    'longDescription' : res.data.text[ndx],
-                    'hazard' : res.data.hazard[ndx],
-                    'hazardUrl' : res.data.hazardUrl[ndx]
-                };
-//                if (res.data.hazard[ndx]) {
-//                    forecast.hazard = res.data.hazard[ndx];
-//                }
-//                if (res.data.hazardUrl[ndx]) {
-//                    forecast.hazardUrl = res.data.hazardUrl[ndx];
-//                }
-                weather.forecast.push(forecast);
+function verifyPrevoty() {
+    return function(next) {
+        prevoty.verify(function(err, verified) {
+            if (!verified) {
+                return next(err);
             }
-            newStatus.weatherStatus.push(weather);
+            return next();
+        });
+    }
+}
+
+function getCurrentStatus() {
+    return function(next) {
+        StatusModel.find({'_id' : 1}, function (err, results) {
+            if (err) {
+                errExit("Problem retrieving current status: " + err.toString());
+            }
+            currentStatus = results[0]; 
+            return next();
+        });
+    }
+}
+
+// Information about the weather.gov API here:
+// http://graphical.weather.gov/xml/
+function retrieveWeatherStatus() {
+    return function(next) {
+        var numBoroughsProcessed = 0;
+ 
+        BOROUGHS.forEach(function getWeather(borough, bNdx, array) {
+            var url = WEATHER_API_BASE_URL + 
+                      'lat='+borough.latitude + 
+                      '&lon='+borough.longitude +
+                      '&FcstType=json';
+            // We have to fill out the User-Agent or we get denied
+            var options = {'url' : url, headers : {'User-Agent' : 'Mozilla/5.0'}};
+
+            request(options, function (err, response, body) {
+                numBoroughsProcessed++;
+                console.log('Borough=%s url=%s', borough.name, url);
+
+                if (err) {
+                    return next(err);
+                }
+
+                if (response.statusCode != 200) {
+                    return next(new Error("%s return statusCode %d", 
+                                          url, response.statusCode));
+                }
+
+                var res = JSON.parse(body);
+                var weather = {
+                    'borough' : borough.name,
+                    'current' : { 
+                        'temp' : res.currentobservation.Temp,
+                        'winds' : res.currentobservation.Winds,
+                        'description' : res.currentobservation.Weather,
+                        'image' : res.currentobservation.Weatherimage},
+                    'forecast' : [],
+                };
+                var firstDate = moment(res.time.startValidTime[0]);            
+                var stopDate = firstDate.add(1, 'days');
+
+                var date;
+                var ndx = 0;
+
+                // There can be at most 8 6-hour increments for today and tomorrow
+                // So we'll make sure we don't go past the 9th element
+                for (ndx = 0; ndx < 9; ndx++) {
+                    date = moment(res.time.startValidTime[ndx]);
+                    console.log("date: %s", date.toString());
+                    if (date.isAfter(stopDate)) {
+                        break;
+                    }
+                    var forecast = {
+                        'periodName' : res.time.startPeriodName[ndx],
+                        'tempLabel' : res.time.tempLabel[ndx],
+                        'temp' : res.data.temperature[ndx],
+                        'iconLink' : res.data.iconLink[ndx],
+                        'shortDescription' : res.data.weather[ndx],
+                        'longDescription' : res.data.text[ndx],
+                        'hazard' : res.data.hazard[ndx],
+                        'hazardUrl' : res.data.hazardUrl[ndx]
+                    };
+                    if (res.data.hazard[ndx]) {
+                        forecast.hazard = res.data.hazard[ndx];
+                    }
+                    if (res.data.hazardUrl[ndx]) {
+                        forecast.hazardUrl = res.data.hazardUrl[ndx];
+                    }
+                    weather.forecast.push(forecast);
+                }
+                newWeatherStatus.boroughs[bNdx] = weather;
+                if (numBoroughsProcessed == BOROUGHS.length) {
+                    console.log("All boroughs' weather processed successfully");
+                    return next();
+                }
+            });
+        });
+    }
+}
+
+function saveWeatherStatus() {
+    return function(next) {
+        StatusModel.where({ '_id' : 1 }).update({'$set' : {'weatherStatus' : newWeatherStatus}}, function (err, numberAffected, raw) {
+            if (err) {
+                next(err);
+            }
+            next();
+        });
+    }
+}
+
+function loadWeatherStatus() {
+    return function(next) {
+        var lastUpdated = moment(currentStatus.weatherStatus.lastUpdated);
+        var weatherArray = []
+
+        if (lastUpdated.add(WEATHER_POLLING_INTERVAL_MINS, 'minutes').isBefore(now)) {
+            console.log("Time to lookup weather status again");
         } else {
-            console.log("ERROR: Received statusCode %d for borough %s",
-                        response.statusCode, boroughname);
+            console.log("Not yet time to lookup weather status again");
+            return next();
         }
-    //});
-    }
-});
 
-console.log("%j", newStatus);
-StatusModel.where({ '_id' : 1 }).update({'$set' : {'weatherStatus' : newStatus.weatherStatus}}, function (err, numberAffected, raw) {
+        BOROUGHS.forEach(function getWeather(borough, index, array) {
+            newWeatherStatus.boroughs.push({});
+        });
+
+        weatherArray.push(retrieveWeatherStatus());
+        weatherArray.push(saveWeatherStatus());
+
+        async.series(weatherArray, function(err, results){
+            if (err) {
+                return next(err);
+            }
+            return next();
+        });
+    }
+}
+
+// Information about the Uber API here:
+// https://developer.uber.com/v1/tutorials/
+function retrieveUberStatus() {
+    return function(next) {
+        var numBoroughsProcessed = 0;
+ 
+        BOROUGHS.forEach(function getSurge(borough, bNdx, array) {
+            // We have to fill out the User-Agent or we get denied
+            var params = {
+                sLat : borough.latitude,
+                eLat : borough.latitude,
+                sLng : borough.longitude,
+                eLng : borough.longitude,
+            };
+            uber.getPriceEstimate(params, function(err, response) {
+//            var params = {
+//                lat : borough.latitude,
+//                lng : borough.longitude,
+//            };
+//            uber.getProducts(params, function(err, response) {
+                numBoroughsProcessed++;
+                if (err) {
+                    console.log(err);
+                    return next(err);
+                } else {
+                    //console.log("%j", response);
+                    response.prices.forEach(function processProduct(prod) {
+                        var product = { name : prod.display_name,
+                                        surgeMultiplier : prod.surge_multiplier };
+                        newUberStatus.boroughs[bNdx].products.push(product);
+                    });
+                    if (numBoroughsProcessed == BOROUGHS.length) {
+                        console.log("All boroughs' Uber processed successfully");
+                        return next();
+                    }
+                }
+            });
+        });
+    }
+}
+
+function saveUberStatus() {
+    return function(next) {
+        StatusModel.where({ '_id' : 1 }).update({'$set' : {'uberStatus' : newUberStatus}}, function (err, numberAffected, raw) {
+            if (err) {
+                next(err);
+            }
+            next();
+        });
+    }
+}
+
+function loadUberStatus() {
+    return function(next) {
+        var lastUpdated = moment(currentStatus.uberStatus.lastUpdated);
+        var uberArray = [];
+
+        if (lastUpdated.add(UBER_POLLING_INTERVAL_MINS, 'minutes').isBefore(now)) {
+            console.log("Time to lookup Uber status again");
+        } else {
+            console.log("Not yet time to lookup Uber status again");
+            return next();
+        }
+
+        BOROUGHS.forEach(function getWeather(borough, index, array) {
+            newUberStatus.boroughs.push({borough : borough.name,
+                                         products : []});
+        });
+
+        uberArray.push(retrieveUberStatus());
+        uberArray.push(saveUberStatus());
+
+        async.series(uberArray, function(err, results){
+            if (err) {
+                return next(err);
+            }
+            return next();
+        });
+    }
+}
+
+function sanitizeText(serviceArray, mtaStatus, dirtyText) {
+    return function(next) {
+        prevoty.filterContent(dirtyText,
+                              security.prevotyContentKey,
+                              function(err, filtered) {
+            if (err) { 
+                return next(err);
+            }
+            mtaStatus.text = filtered.output; 
+            serviceArray.push(mtaStatus);
+            return next();
+        });
+    }
+}
+
+function retrieveMTAStatus() {
+    return function(next) {
+        var prevotyTasks = [];
+        var serviceArray = [];
+        var body = fs.readFileSync('serviceStatus.txt', {encoding : 'utf8'});
+
+        //console.log(body);
+        // Because there are things like &amp;nbsp; we need to clean those up
+        // before doing the HTML Decode, so we just do the same thing twice.
+        var decodedBody = S(body).decodeHTMLEntities().s;
+        decodedBody = S(decodedBody).decodeHTMLEntities().s;
+        
+        var $ = cheerio.load(decodedBody,
+                             { normalizeWhitespace: true,
+                               lowerCaseTags : false,
+                               lowerCaseAttributeNames : false,
+                               xmlMode: true,
+                               decodeEntities : false});
+
+        $('line').each(function(i, elem) {
+            var line = $(this);
+            var dirtyText = line.children('text').text();
+            var mtaStatus = {
+                line : line.children('name').text(),
+                status : line.children('status').text(),
+                date : line.children('date').text(),
+                time : line.children('time').text(),
+            };
+            prevotyTasks.push(sanitizeText(serviceArray, mtaStatus, dirtyText));
+        });
+
+        async.series(prevotyTasks, function(err, results){
+            if (err) {
+                return next(err);
+            }
+            newMTAStatus.lastUpdated = now;
+            newMTAStatus.service = serviceArray;
+            return next();
+        });
+    }
+}
+
+function saveMTAStatus() {
+    return function(next) {
+        StatusModel.where({ '_id' : 1 }).update({'$set' : {'mtaStatus' : newMTAStatus}}, function (err, numberAffected, raw) {
+            if (err) {
+                next(err);
+            }
+            next();
+        });
+    }
+}
+
+function loadMTAStatus() {
+    return function(next) {
+        var lastUpdated = moment(currentStatus.mtaStatus.lastUpdated);
+        var mtaArray = [];
+
+        if (lastUpdated.add(MTA_POLLING_INTERVAL_MINS, 'minutes').isBefore(now)) {
+            console.log("Time to lookup MTA status again");
+        } else {
+            console.log("Not yet time to lookup MTA status again");
+            return next();
+        }
+
+        mtaArray.push(retrieveMTAStatus());
+        mtaArray.push(saveMTAStatus());
+
+        async.series(mtaArray, function(err, results){
+            if (err) {
+                return next(err);
+            }
+            return next();
+        });
+    }
+}
+
+var loaderArray = [];
+
+loaderArray.push(verifyPrevoty());
+loaderArray.push(getCurrentStatus());
+//loaderArray.push(loadWeatherStatus());
+//loaderArray.push(loadUberStatus());
+loaderArray.push(loadMTAStatus());
+
+async.series(loaderArray, function(err, results){
     if (err) {
-        var errStr = 'ERROR: Failed to update status: ' + err.toString();
-        console.log(errStr);
+        console.log("ERROR: " + err.toString());
+        process.exit(1);
     }
-    process.exit(code=0);
+    process.exit(0);
 });
-
