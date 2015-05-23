@@ -298,7 +298,7 @@ function retrieveMTAStatus() {
     return function(next) {
         var prevotyTasks = [];
         var serviceArray = [];
-        //var body = fs.readFileSync('serviceStatus.txt', {encoding : 'utf8'});
+        var body = fs.readFileSync('serviceStatus.txt', {encoding : 'utf8'});
 
         var options = { 'url' : MTA_API_BASE_URL, 
                         headers : {'User-Agent' : 'Mozilla/5.0'}};
@@ -328,7 +328,7 @@ function retrieveMTAStatus() {
 
             $('line').each(function(i, elem) {
                 var line = $(this);
-                var dirtyText = line.children('text').text();
+                var dirtyText = line.children('text').html();
                 var mtaStatus = {
                     line : line.children('name').text(),
                     status : line.children('status').text(),

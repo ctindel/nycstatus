@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>NYC Status</title>
+  <!--link href="/assets/nycstatus.css" media="all" rel="stylesheet" /-->
+  <script src="http://ajax.googleapis.com/ajax/libs/jquery/1.11.2/jquery.min.js"></script>
+  <script>
+    /*window.setInterval("reloadMTA();", 60000);*/
+    function reloadMTA() {
+      document.getElementById("mtastatusIframe").src="http://service.mta.info/ServiceStatus/status.html?widget=yes";
+    }
+  </script>
+</head>
+
+<script>
+var xmlhttp = new XMLHttpRequest();
+var url = "nycstatus.json";
+
+xmlhttp.onreadystatechange = function() {
+    if (xmlhttp.readyState == 4 && xmlhttp.status == 200) {
+        var nycStatus = JSON.parse(xmlhttp.responseText).currentStatus;
+        parseUber(nycStatus);
+        parseWeather(nycStatus);
+    }
+}
+xmlhttp.open("GET", url, true);
+xmlhttp.send();
+
+function parseUber(nycStatus) {
+    var BOROUGHS = ['Manhattan', 'Queens', 'Brooklyn', 'Bronx', 'Staten Island'];
+
+    var out = "";
+    var uberStatus = nycStatus.uberStatus;
+    var uberLastUpdated = uberStatus.lastUpdated;
+    var uberBoroughs = uberStatus.boroughs;
+    var uberHash = { };
+
+    uberBoroughs.forEach(function(b) {
+        var multiplier = 1.0;
+
+        uberHash[b.borough] = {};
+        uberHash[b.borough.toString()].products = b.products;
+    });
+    out += '<table><tr><td></td>';
+    uberHash[BOROUGHS[0]].products.forEach(function (p, index) {
+    	out += '<td align=center><img width="30%" src="assets/' + p.name + '.png"/></td>';
+    });
+    out += '</tr>';
+    BOROUGHS.forEach(function(b) {
+        out += '<tr><td><strong>' + b + '</strong></td>';
+        uberHash[b].products.forEach(function (p, index) {
+            multiplier = p.surgeMultiplier;
+            if (1 == multiplier) {
+                multiplier = '1.0';
+            }
+            out += '<td align=center>' + multiplier + '</td>';
+        });
+        out += '</tr>';
+    });
+    out += '</table>';
+    document.getElementById("uberStatus").innerHTML = out;
+}
+</script>
+
+<script>
+function parseWeather(nycStatus) {
+    var BOROUGHS = ['Manhattan', 'Queens', 'Brooklyn', 'Bronx', 'Staten Island'];
+
+    var out = "";
+    var weatherStatus = nycStatus.weatherStatus;
+    var weatherLastUpdated = weatherStatus.lastUpdated;
+    var weatherBoroughs = weatherStatus.boroughs;
+    var weatherHash = { };
+
+    weatherBoroughs.forEach(function(b) {
+        weatherHash[b.borough] = {};
+        weatherHash[b.borough.toString()].current = b.current;
+        weatherHash[b.borough.toString()].forecast = b.forecast;
+    });
+    out += '<table><tr><td></td>';
+    out += '<td align=center><strong>Current</strong></td>'
+    weatherHash[BOROUGHS[0]].forecast.forEach(function (f, index) {
+    	out += '<td align=center><strong>' + f.periodName + '</strong></td>';
+    });
+    out += '</tr>';
+    BOROUGHS.forEach(function(b) {
+        out += '<tr><td><strong>' + b + '</strong></td>';
+        out += '<td align=center>';
+        out += '<table>';
+        out += '<tr><td align=center><img src="http://forecast.weather.gov/images/wtf/medium/' + weatherHash[b].current.image + '"</img></td></tr>';
+        out += '<tr><td align=center>Temp: ' + weatherHash[b].current.temp + '</td></tr>';
+        out += '<tr><td align=center>' + weatherHash[b].current.description + '</td></tr>';
+        out += '</table>';
+        out += '</td>';
+        weatherHash[b].forecast.forEach(function (f, index) {
+            out += '<td align=center>';
+            out += '<table>';
+            out += '<tr><td align=center><img src="' + f.iconLink + '"</img></td></tr>';
+            out += '<tr><td align=center>Temp: ' + f.temp + '</td></tr>';
+            out += '<tr><td align=center>' + f.shortDescription + '</td></tr>';
+            out += '</table>';
+            out += '</td>';
+        });
+        out += '</tr>';
+    });
+    out += '</table>';
+    document.getElementById("weatherStatus").innerHTML = out;
+}
+</script>
+
+<body>
+<iframe id="mtastatusIframe" width="230" height="430" border="0" frameborder="0" src="http://service.mta.info/ServiceStatus/status.html?widget=yes" marginwidth="0" marginheight="0" vspace="0" hspace="0" allowtransparency="true" scrolling="no"></iframe>
+
+<div id="uberStatus"></div>
+<div id="weatherStatus"></div>
+
+</body>

@@ -1,0 +1,295 @@
+html,body{
+    margin:0px;
+    padding:0px;
+    font-family:"Helvetica Neue", "Arial";
+    color:white;
+    overflow:hidden;
+    color:#fff;
+    background-color:#222;
+    width:100%;height:100%}
+
+.container{
+    width:900px;
+    padding-left:auto;
+    padding-right:auto}
+
+.trainname{
+    display:inline-block;
+    width:60px;
+    height:60px;
+    border-radius:50%;
+    margin-left:10px;
+    margin-right:10px;margin-bottom:55px}
+
+.letter{
+    width:60px;
+    font-size:40px;
+    position:absolute;
+    background-color:transparent;
+    padding-top:5px;
+    font-weight:bold}
+
+.smallstatus{
+    position:absolute;
+    font-size:14px;
+    color:#fff;
+    height:20px;
+    padding-top:65px;
+    width:80px;
+    margin-left:-10px;
+    text-align:center}
+
+.trainname#uberx{
+    height:140px;
+    width:140px;
+    background-image:url(/ux.png);
+    background-size:140px;
+    background-position:center;
+    cursor:default}
+
+.trainname#uberxl{
+    height:140px;
+    width:140px;
+    background-image:url(/uxl.png);
+    background-size:140px;
+    background-position:center;
+    cursor:default}
+
+.trainname#uberblack{
+    height:140px;
+    width:140px;
+    background-image:url(/ub.png);
+    background-size:140px;
+    background-position:center;
+    cursor:default}
+
+.trainname#ubersuv{
+    height:140px;
+    width:140px;
+    background-image:url(/usuv.png);
+    background-size:140px;
+    background-position:center;
+    cursor:default}
+
+.trainname#ubert{
+    height:140px;
+    width:140px;
+    background-image:url(/ut.png);
+    background-size:140px;
+    background-position:center;
+    cursor:default}
+
+.uberstatus{
+    font-size:14px;
+    color:#fff;
+    padding-top:150px;
+    width:140px;
+    font-size:18px;
+    text-align:center}
+
+.trainname#temp{
+    background-color:#000;
+    cursor:default;
+    width:200px;
+    height:200px}
+
+.trainname#wind{
+    background-color:#000;
+    cursor:default;
+    width:200px;
+    height:200px}
+
+.trainname#weather{
+    background-color:#000;
+    cursor:default;
+    width:200px;height:200px}#temp
+
+.letter{
+    width:200px;
+    font-size:40pt;
+    padding-top:70px;
+    text-align:center;
+    font-weight:normal;
+    text-align:center}
+
+.weatherstatus{
+    font-size:14px;
+    color:#fff;
+    padding-top:220px;
+    width:200px;
+    text-align:center;
+    font-size:18px}#wind
+
+.wind{
+    width:200px;
+    height:200px;
+    background-image:url(/wind.png);
+    background-repeat:no-repeat;
+    background-size:64px;
+    background-position:center;
+    cursor:default}#weather
+
+.clear{
+    width:200px;
+    height:200px;
+    margin-left:0;
+    background-image:url(/clearsky.png);
+    background-repeat:no-repeat;
+    background-size:64px;
+    background-position:center;
+    cursor:default}#weather
+
+.clouds{
+    width:200px;
+    height:200px;
+    margin-left:0;
+    background-image:url(/scatteredclouds.png);
+    background-repeat:no-repeat;
+    background-size:64px;
+    background-position:center;
+    cursor:default}#weather
+
+.rain{
+    width:200px;
+    height:200px;
+    margin-left:0;
+    background-image:url(/rain.png);
+    background-repeat:no-repeat;
+    background-size:64px;
+    background-position:center;
+    cursor:default}#weather
+
+.thunderstorm{
+    width:200px;
+    height:200px;
+    margin-left:0;
+    background-image:url(/thunderstorm.png);
+    background-repeat:no-repeat;
+    background-size:64px;
+    background-position:center;
+    cursor:default}#weather
+
+.snow{
+    width:200px;
+    height:200px;
+    margin-left:0;
+    background-image:url(/snow.png);
+    background-repeat:no-repeat;
+    background-size:64px;
+    background-position:center;
+    cursor:default}#weather
+
+.haze{
+    width:200px;
+    height:200px;margin-left:0;
+    background-image:url(/mist.png);
+    background-repeat:no-repeat;
+    background-size:64px;
+    background-position:center;
+    cursor:default}
+
+.header{
+    text-align:center;
+    width:100%;
+    margin-top:10px;
+    margin-bottom:10px;
+    padding:0}
+
+.header h1{
+    font-size:90px;
+    line-height:0px;
+    font-weight:lighter}
+
+.header h2{
+    font-size:30px;
+    line-height:30px;
+    font-weight:lighter}
+
+.spacer{
+    content:"";
+    width:100px;
+    height:50px}
+
+.screen{
+    height:100%;
+    width:100%;
+    top:0;
+    background-color:#222;
+    opacity:.7;
+    z-index:-1;
+    position:absolute}
+
+section:nth-child(1) {
+    background-color:#222;
+    background:url("/nyc.jpg");
+    background-size:cover;
+    background-position:center;
+    z-index:0}
+
+section:nth-child(2){
+    background-color:#222;
+    background:url("/subway.jpg");
+    background-size:cover;
+    background-position:center;
+    z-index:0}
+
+section:nth-child(3){
+    background-color:#222;
+    background:url("/uber.jpg");
+    background-size:cover;
+    background-position:center;
+    z-index:0}
+
+section{
+    text-align:center;
+    display:table}
+
+section span{
+    display:table-cell;
+    vertical-align:middle}
+
+.onepage-wrapper{
+    width:100%;
+    height:100%;
+    display:block;
+    position:relative;
+    padding:0}
+
+.onepage-wrapper 
+
+.section{width:100%;height:100%}
+
+.onepage-pagination{
+    position:absolute;
+    left:10px;
+    top:40%;
+    z-index:5;
+    list-style:none;margin:0;padding:0}
+
+.onepage-pagination li{
+    padding:0;
+    text-align:center}
+
+.onepage-pagination li a{
+    padding:10px;
+    width:4px;
+    height:4px;
+    display:block}
+
+.onepage-pagination li a:before{
+    content:'';
+    position:absolute;
+    width:10px;
+    height:10px;
+    background:rgba(255,255,255,0.85);
+    border-radius:10px;
+    -webkit-border-radius:10px;
+    -moz-border-radius:10px}
+
+.onepage-pagination li a.active:before{
+    width:10px;
+    height:10px;
+    background:none;
+    border:1px solid
+    white;margin-left:-1px}
+
